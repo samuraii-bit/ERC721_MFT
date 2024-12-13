@@ -6,10 +6,19 @@ describe("Testing MyERC721", function() {
     async function deploy() {
         const users = await ethers.getSigners();
     
-        const Factory = await ethers.getContractFactory(name);
-        const MyERC721 = await Factory.deploy(name, symbol);
+        const FactoryMyERC721 = await ethers.getContractFactory(name);
+        const MyERC721 = await FactoryMyERC721.deploy(name, symbol);
 
-        return {users, MyERC721};
+        const FactoryContractReceiver = await ethers.getContractFactory("ContractReceiver");
+        const ContractReceiver = await FactoryContractReceiver.deploy("ContractReceiver");
+
+        const FactoryContractNonReceiver = await ethers.getContractFactory("ContractNonReceiver");
+        const ContractNonReceiver = await FactoryContractNonReceiver.deploy("ContractNonReceiver");
+
+        const FactoryContractReceiverWrongDef = await ethers.getContractFactory("ContractReceiverWrongDef");
+        const ContractReceiverWrongDef = await FactoryContractReceiverWrongDef.deploy("ContractReceiverWrongDef");
+
+        return {users, MyERC721, ContractReceiver, ContractNonReceiver, ContractReceiverWrongDef};
     }
 
     it("Deployment test", async function(){
@@ -40,7 +49,7 @@ describe("Testing MyERC721", function() {
         await expect(tx.mint(users[1].address)).to.be.revertedWith("U cant mint tokens for other users");
     });
     
-    it("burn test: mint 1 token for users[1] from owner and then burn it", async function(){
+    it("burn test: mint 1 token for users[1] from owner and then burn it as owner", async function(){
         const {MyERC721, users} = await loadFixture(deploy);
         const tx1 = await MyERC721.connect(users[0]).mint(users[1].address);
         await expect(tx1).to.changeTokenBalance(MyERC721, users[1].address, 1);
@@ -49,6 +58,24 @@ describe("Testing MyERC721", function() {
         const tx2 = await MyERC721.connect(users[0]).burn(users[1].address, 1);
         await expect(tx2).to.changeTokenBalance(MyERC721, users[1].address, -1);
         await expect(tx2).to.emit(MyERC721, "Burn");
+    });
+
+    it("burn test: mint 1 token for users[1] from users[1] and then burn it as users[1]", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        const tx1 = await MyERC721.connect(users[1]).mint(users[1].address);
+        await expect(tx1).to.changeTokenBalance(MyERC721, users[1].address, 1);
+        await expect(tx1).to.emit(MyERC721, "Mint");
+
+        const tx2 = await MyERC721.connect(users[1]).burn(users[1].address, 1);
+        await expect(tx2).to.changeTokenBalance(MyERC721, users[1].address, -1);
+        await expect(tx2).to.emit(MyERC721, "Burn");
+    });
+
+    it("burn test: trying to burn not existing token", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+
+        const tx2 = await MyERC721.connect(users[0]);
+        await expect(tx2.burn(users[1].address, 100)).to.be.revertedWith("There are no tokens with entered Id");
     });
 
     it("burn test: trying to burn token as non-owner", async function(){
@@ -145,9 +172,9 @@ describe("Testing MyERC721", function() {
         expect(tx2).to.be.equal(users[2].address);
     });
 
-    it("getApproved test: trying to call function with not id of not existing token", async function(){
+    it("getApproved test: trying to call function with id of not existing token", async function(){
         const {MyERC721} = await loadFixture(deploy);
-        await expect(MyERC721.ownerOf(1)).to.be.revertedWith("Invalid token id was entered");
+        await expect(MyERC721.getApproved(1)).to.be.revertedWith("Invalid token id was entered");
     });
 
     it("setApprovalForAll test: mint 1 token for users[1] and then make users[2] operator as owner", async function(){
@@ -215,16 +242,119 @@ describe("Testing MyERC721", function() {
         await MyERC721.connect(users[1]).approve(users[2].address, 1);
         const tx = await MyERC721.connect(users[3]);
 
-        await expect(tx.transferFrom(users[1], users[2], 1)).to.be.revertedWith("Only owner of token, operators and approved user can transfer tokens");
+        await expect(tx.transferFrom(users[1].address, users[2].address, 1)).to.be.revertedWith("Only owner of token, operators and approved user can transfer tokens");
     });
 
-    it("safeTransferFrom test: trying to transfer tokens not from owner", async function(){
+    it("safeTransferFrom{3} test: trying to transfer tokens from non-owner", async function(){
         const {MyERC721, users} = await loadFixture(deploy);
         await MyERC721.connect(users[1]).mint(users[1].address);
         await MyERC721.connect(users[1]).approve(users[2].address, 1);
         const tx = await MyERC721.connect(users[2]);
 
-        await expect(tx.safeTransferFrom(users[1], users[2], 1)).to.be.revertedWith("Only owner of token, operators and approved user can transfer tokens");
+        await expect(tx["safeTransferFrom(address,address,uint256)"](users[3].address, users[2].address, 1)).to.be.revertedWith("U can transfer tokens only from owner");
     });
 
+    it("safeTransferFrom{3} test: trying to call function as non-owner, non-approved user and non-operator", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        await MyERC721.connect(users[1]).approve(users[2].address, 1);
+        const tx = await MyERC721.connect(users[3]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256)"](users[1].address, users[2].address, 1)).to.be.revertedWith("Only owner of token, operators and approved user can transfer tokens");
+    });
+
+    it("safeTransferFrom{3} test: trying to call function with invalid receiver address (0-address)", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        await MyERC721.connect(users[1]).approve(users[2].address, 1);
+        const tx = await MyERC721.connect(users[2]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256)"](users[1].address, ethers.ZeroAddress, 1)).to.be.revertedWith("Invalid receiver address");
+    });
+
+    it("safeTransferFrom{3} test: transfer from users[1] to users[2] as owner", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        const tx = await MyERC721.connect(users[1])["safeTransferFrom(address,address,uint256)"](users[1].address, users[2].address, 1);
+
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[1], -1);
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[2], 1);
+        await expect(tx).to.emit(MyERC721, "Transfer");
+    });
+
+    it("safeTransferFrom{3} test: transfer from users[1] to users[3] as approved user users[2]", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        await MyERC721.connect(users[1]).approve(users[2].address, 1);
+        const tx = await MyERC721.connect(users[2])["safeTransferFrom(address,address,uint256)"](users[1].address, users[3].address, 1);
+
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[1], -1);
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[3], 1);
+        await expect(tx).to.emit(MyERC721, "Transfer");
+    });
+
+    it("safeTransferFrom{3} test: transfer from users[1] to users[4] as operator users[2]", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        await MyERC721.connect(users[1]).setApprovalForAll(users[2].address, true);
+        const tx = await MyERC721.connect(users[2])["safeTransferFrom(address,address,uint256)"](users[1].address, users[4].address, 1);
+
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[1], -1);
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[4], 1);
+        await expect(tx).to.emit(MyERC721, "Transfer");
+    });
+
+    it("safeTransferFrom{3} test: transfer from users[1] to ContractReceiver as owner", async function(){
+        const {MyERC721, users, ContractReceiver} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        const tx = await MyERC721.connect(users[1])["safeTransferFrom(address,address,uint256)"](users[1].address, ContractReceiver.target, 1);
+
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[1], -1);
+        await expect(tx).to.be.changeTokenBalance(MyERC721, ContractReceiver.target, 1);
+        await expect(tx).to.emit(MyERC721, "Transfer");
+    });
+
+    it("safeTransferFrom{3} test: trying to transfer from users[1] to ContractNonReceiver as owner", async function(){
+        const {MyERC721, users, ContractNonReceiver} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        const tx = await MyERC721.connect(users[1]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256)"](users[1].address, ContractNonReceiver.target, 1)).to.be.revertedWith("Contract-receiver cant be an owner of NFT ERC721");
+    });
+
+    it("safeTransferFrom{4} test: transfer from users[1] to users[2] as owner", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        const tx = await MyERC721.connect(users[1])["safeTransferFrom(address,address,uint256,bytes)"](users[1].address, users[2].address, 1, ethers.toUtf8Bytes("hello"));
+
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[1], -1);
+        await expect(tx).to.be.changeTokenBalance(MyERC721, users[2], 1);
+        await expect(tx).to.emit(MyERC721, "Transfer");
+    });
+
+    it("safeTransferFrom{4} test: trying to call function as non-owner, non-approved user and non-operator", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        await MyERC721.connect(users[1]).approve(users[2].address, 1);
+        const tx = await MyERC721.connect(users[3]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256,bytes)"](users[1].address, users[2].address, 1, ethers.toUtf8Bytes("hello"))).to.be.revertedWith("Only owner of token, operators and approved user can transfer tokens");
+    });
+
+    it("safeTransferFrom{4} test: trying to transfer from users[1] to ContractNonReceiver as owner", async function(){
+        const {MyERC721, users, ContractReceiverWrongDef} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        const tx = await MyERC721.connect(users[1]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256,bytes)"](users[1].address, ContractReceiverWrongDef.target, 1, ethers.toUtf8Bytes("bye"))).to.be.revertedWith("Wrong defenition of onERC721Received() in contract-receiver");
+    });
+
+    it("safeTransferFrom{4} test: trying to call function with invalid receiver address (0-address)", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        await MyERC721.connect(users[1]).approve(users[2].address, 1);
+        const tx = await MyERC721.connect(users[2]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256,bytes)"](users[1].address, ethers.ZeroAddress, 1, ethers.toUtf8Bytes("random"))).to.be.revertedWith("Invalid receiver address");
+    });
 });

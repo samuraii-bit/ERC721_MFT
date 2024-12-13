@@ -107,34 +107,34 @@ contract MyERC721 is IMyERC721{
         _;
     }
 
-    modifier safeTransfer(address _from, address _to, uint256 _tokenId) {
+    modifier safeTransfer(address _from, address _to, uint256 _tokenId, bytes memory data) {
         require(_from == owners[_tokenId], "U can transfer tokens only from owner");
         require(_to != address(0), "Invalid receiver address");
-        require(owners[_tokenId] != address(0), "Invalid NFT Id");
+
         _;
+
+        if (_to.code.length > 0) {
+            try IMyERC721TokenReceiver(_to).onERC721Received(msg.sender, _from, _tokenId, data) returns (bytes4 res) {
+                require(
+                    res == bytes4(keccak256("onERC721Received(address,address,uint256,bytes)")), 
+                    "Wrong defenition of onERC721Received() in contract-receiver"
+                    );
+            } catch {
+                revert("Contract-receiver cant be an owner of NFT ERC721");
+            } 
+        }
     }
 
     function transferFrom(address _from, address _to, uint256 _tokenId) public ownerOperatorApprovedUser(_from, _to, _tokenId) {     
         transfer(_from, _to, _tokenId);
     }
 
-    function safeTransferFrom(address _from, address _to, uint256 _tokenId) public ownerOperatorApprovedUser(_from, _to, _tokenId) safeTransfer(_from, _to, _tokenId){
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId) public ownerOperatorApprovedUser(_from, _to, _tokenId) safeTransfer(_from, _to, _tokenId, ""){
         transfer(_from, _to, _tokenId);
     }
     
-    function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes memory data) public ownerOperatorApprovedUser(_from, _to, _tokenId) safeTransfer(_from, _to, _tokenId){
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes memory data) public ownerOperatorApprovedUser(_from, _to, _tokenId) safeTransfer(_from, _to, _tokenId, data){
         transfer(_from, _to, _tokenId);
-    
-        if (_to.code.length > 0) {
-            try IMyERC721TokenReceiver(_to).onERC721Received(msg.sender, _from, _tokenId, data) returns (bytes4 res) {
-                require(
-                    res == bytes4(keccak256("onERC721Received(address,address,uint256,bytes)")), 
-                    "Contract-receiver cant be an owner of NFT ERC721"
-                    );
-            } catch {
-                revert("Contract-receiver cant be an owner of NFT ERC721");
-            }
-        }
     }
     
     function transfer(address _from, address _to, uint256 _tokenId) internal {
