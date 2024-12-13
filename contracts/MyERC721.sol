@@ -4,12 +4,14 @@ import "./interfaces/IMyERC721.sol";
 import "./interfaces/IMyERC721TokenReceiver.sol";
 import "./interfaces/IMyERC721Enumerable.sol";
 import "./interfaces/IMyERC721Metadata.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract MyERC721 is IMyERC721{
     address public owner;
     string public name;
     string public symbol;
     uint256 public totalSupply;
+    string public baseTokenURI;
 
     mapping (address => uint256) private balances;
     mapping (uint256 => address) private owners;
@@ -17,12 +19,13 @@ contract MyERC721 is IMyERC721{
     mapping (uint256 => address) private approved;
     mapping (address => mapping (address => bool)) public isApprovedForAll;
 
-    constructor(string memory _name, string memory _symbol){
+    constructor(string memory _name, string memory _symbol, string memory _baseTokenURI){
         owner = msg.sender;
         name = _name;
         symbol = _symbol;
+        baseTokenURI = _baseTokenURI;
         totalSupply = 0;
-
+        
         mint(owner); //нулевой токен нужно сразу заминтить владельцу контракта. (нужно для реализации логики)
     }
 
@@ -76,6 +79,14 @@ contract MyERC721 is IMyERC721{
     function getApproved(uint256 _tokenId) public view returns (address) {
         require(approved[_tokenId] != address(0), "Invalid token id was entered");
         return approved[_tokenId];
+    }
+
+    function tokenURI(uint256 _tokenId) public view returns (string memory) {
+        require(tokensById[_tokenId] != 0, "There are no tokens with entered Id");
+        return string.concat(
+            baseTokenURI,
+            Strings.toString(_tokenId)
+        );
     }
 
     function approve(address _approved, uint256 _tokenId) public {

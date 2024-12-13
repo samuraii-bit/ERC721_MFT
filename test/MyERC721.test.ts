@@ -1,5 +1,5 @@
 import {loadFixture, ethers, expect} from "./setup";
-import {name, symbol} from "../tokenInit";
+import {name, symbol, baseTokenURI} from "../tokenInit";
 
 describe("Testing MyERC721", function() {
 
@@ -7,7 +7,7 @@ describe("Testing MyERC721", function() {
         const users = await ethers.getSigners();
     
         const FactoryMyERC721 = await ethers.getContractFactory(name);
-        const MyERC721 = await FactoryMyERC721.deploy(name, symbol);
+        const MyERC721 = await FactoryMyERC721.deploy(name, symbol, baseTokenURI);
 
         const FactoryContractReceiver = await ethers.getContractFactory("ContractReceiver");
         const ContractReceiver = await FactoryContractReceiver.deploy("ContractReceiver");
@@ -22,7 +22,7 @@ describe("Testing MyERC721", function() {
     }
 
     it("Deployment test", async function(){
-        const {MyERC721, users} = await loadFixture(deploy);
+        const {MyERC721} = await loadFixture(deploy);
         expect(MyERC721.target).to.be.properAddress;
     });
 
@@ -131,6 +131,21 @@ describe("Testing MyERC721", function() {
     it("ownerOf test: trying to call function with not id of not existing token", async function(){
         const {MyERC721} = await loadFixture(deploy);
         await expect(MyERC721.ownerOf(1)).to.be.revertedWith("Invalid token id was entered");
+    });
+
+    it("tokenURI test: trying to get URI of not existing token", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+
+        const tx2 = await MyERC721.connect(users[0]);
+        await expect(tx2.tokenURI(100)).to.be.revertedWith("There are no tokens with entered Id");
+    });
+
+    it("tokenURI test", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[0]).mint(users[1].address);
+        const tx = await MyERC721.tokenURI(1);
+
+        expect(tx).to.be.equal(baseTokenURI + "1");
     });
 
     it("approve test: mint 1 token for users[1] and then approve it for users[2] as owner", async function(){
