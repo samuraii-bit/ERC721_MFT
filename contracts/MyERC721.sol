@@ -4,9 +4,10 @@ import "./interfaces/IMyERC721.sol";
 import "./interfaces/IMyERC721TokenReceiver.sol";
 import "./interfaces/IMyERC721Enumerable.sol";
 import "./interfaces/IMyERC721Metadata.sol";
+import "./interfaces/IMyERC165.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-contract MyERC721 is IMyERC721{
+contract MyERC721 is IMyERC165, IMyERC721{
     address public owner;
     string public name;
     string public symbol;
@@ -41,7 +42,7 @@ contract MyERC721 is IMyERC721{
         totalSupply++;
         balances[_to]++;
 
-        emit Mint(address(0), _to, totalSupply - 1);
+        emit Transfer(address(0), _to, totalSupply - 1);
     }
 
     function burn(address _from, uint256 _tokenId) public {
@@ -58,7 +59,7 @@ contract MyERC721 is IMyERC721{
         delete owners[_tokenId];
         delete tokensById[_tokenId];
         
-        emit Burn(_from, address(0), _tokenId);
+        emit Transfer(_from, address(0), _tokenId);
     }
 
     function tokenByIndex(uint256 _index) public view returns (uint256){
@@ -118,12 +119,7 @@ contract MyERC721 is IMyERC721{
         _;
     }
 
-    modifier safeTransfer(address _from, address _to, uint256 _tokenId, bytes memory data) {
-        require(_from == owners[_tokenId], "U can transfer tokens only from owner");
-        require(_to != address(0), "Invalid receiver address");
-
-        _;
-
+    function checkOnERC721Received(address _from, address _to, uint256 _tokenId, bytes memory data) internal returns (bool) {
         if (_to.code.length > 0) {
             try IMyERC721TokenReceiver(_to).onERC721Received(msg.sender, _from, _tokenId, data) returns (bytes4 res) {
                 require(
@@ -134,18 +130,31 @@ contract MyERC721 is IMyERC721{
                 revert("Contract-receiver cant be an owner of NFT ERC721");
             } 
         }
+        else {
+            return true;
+        }
     }
 
     function transferFrom(address _from, address _to, uint256 _tokenId) public ownerOperatorApprovedUser(_from, _to, _tokenId) {     
         transfer(_from, _to, _tokenId);
     }
 
-    function safeTransferFrom(address _from, address _to, uint256 _tokenId) public ownerOperatorApprovedUser(_from, _to, _tokenId) safeTransfer(_from, _to, _tokenId, ""){
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId) public ownerOperatorApprovedUser(_from, _to, _tokenId) {
+        require(_from == owners[_tokenId], "U can transfer tokens only from owner");
+        require(_to != address(0), "Invalid receiver address");
+
         transfer(_from, _to, _tokenId);
+
+        require(checkOnERC721Received(_from, _to, _tokenId, ""));
     }
     
-    function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes memory data) public ownerOperatorApprovedUser(_from, _to, _tokenId) safeTransfer(_from, _to, _tokenId, data){
+    function safeTransferFrom(address _from, address _to, uint256 _tokenId, bytes memory data) public ownerOperatorApprovedUser(_from, _to, _tokenId) {
+        require(_from == owners[_tokenId], "U can transfer tokens only from owner");
+        require(_to != address(0), "Invalid receiver address");
+
         transfer(_from, _to, _tokenId);
+
+        require(checkOnERC721Received(_from, _to, _tokenId, data));
     }
     
     function transfer(address _from, address _to, uint256 _tokenId) internal {
@@ -154,5 +163,12 @@ contract MyERC721 is IMyERC721{
         owners[_tokenId] = _to;
 
         emit Transfer(_from, _to, _tokenId);
+    }
+
+    function supportsInterface(bytes4 interfaceID) public view virtual override returns (bool) {
+        return (interfaceID == type(IMyERC721).interfaceId ||
+                interfaceID == type(IMyERC165).interfaceId ||
+                interfaceID == type(IMyERC721Enumerable).interfaceId ||
+                interfaceID == type(IMyERC721Metadata).interfaceId);
     }
 }
