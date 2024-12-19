@@ -6,13 +6,18 @@ import "./interfaces/IMyERC721Enumerable.sol";
 import "./interfaces/IMyERC721Metadata.sol";
 import "./interfaces/IMyERC165.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract MyERC721 is IMyERC165, IMyERC721{
+contract MyERC721 is IMyERC165, IMyERC721, AccessControl{
+    bytes32 public constant MARKETPLACE_ROLE = keccak256("MARKETPLACE_ROLE");
+    error CallerNotMarketPlace(address caller);
+
     address public owner;
     string public name;
     string public symbol;
     uint256 public totalSupply;
     string public baseTokenURI;
+    address public marketPlace;
 
     mapping (address => uint256) private balances;
     mapping (uint256 => address) private owners;
@@ -26,14 +31,24 @@ contract MyERC721 is IMyERC165, IMyERC721{
         symbol = _symbol;
         baseTokenURI = _baseTokenURI;
         totalSupply = 0;
-        
+
         mint(owner); //нулевой токен нужно сразу заминтить владельцу контракта. (нужно для реализации логики)
+    }
+
+    function setMarketPlace(address _marketPlace) external{
+        require(msg.sender == owner, "Only owner can set MarketPlace");
+
+        marketPlace = _marketPlace;
+        _grantRole(MARKETPLACE_ROLE, marketPlace);
+        
+        emit SetMarketPlace(msg.sender, _marketPlace);
     }
 
     function mint(address _to) public {
         require(
             msg.sender == _to ||
-            msg.sender == owner, 
+            msg.sender == owner ||
+            hasRole(MARKETPLACE_ROLE, msg.sender),  
             "U cant mint tokens for other users"
         );
         
@@ -48,7 +63,7 @@ contract MyERC721 is IMyERC165, IMyERC721{
     function burn(address _from, uint256 _tokenId) public {
         require(
             msg.sender == _from ||
-            msg.sender == owner, 
+            msg.sender == owner,
             "U cant burn tokens of other users"
             );
         
@@ -113,7 +128,8 @@ contract MyERC721 is IMyERC165, IMyERC721{
         require(
             msg.sender == approved[_tokenId] ||
             msg.sender == _from ||
-            isApprovedForAll[_tokenOwner][msg.sender], 
+            isApprovedForAll[_tokenOwner][msg.sender] ||
+            hasRole(MARKETPLACE_ROLE, msg.sender),
             "Only owner of token, operators and approved user can transfer tokens"
         );
         _;
@@ -126,6 +142,7 @@ contract MyERC721 is IMyERC165, IMyERC721{
                     res == bytes4(keccak256("onERC721Received(address,address,uint256,bytes)")), 
                     "Wrong defenition of onERC721Received() in contract-receiver"
                     );
+                return true;
             } catch {
                 revert("Contract-receiver cant be an owner of NFT ERC721");
             } 
@@ -165,7 +182,7 @@ contract MyERC721 is IMyERC165, IMyERC721{
         emit Transfer(_from, _to, _tokenId);
     }
 
-    function supportsInterface(bytes4 interfaceID) public view virtual override returns (bool) {
+    function supportsInterface(bytes4 interfaceID) public view virtual override(IMyERC165, AccessControl) returns (bool) {
         return (interfaceID == type(IMyERC721).interfaceId ||
                 interfaceID == type(IMyERC165).interfaceId ||
                 interfaceID == type(IMyERC721Enumerable).interfaceId ||

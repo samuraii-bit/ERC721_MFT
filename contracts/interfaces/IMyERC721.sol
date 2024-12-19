@@ -5,6 +5,7 @@ interface IMyERC721 {
     event Transfer(address indexed _from, address indexed _to, uint256 indexed _tokenId);
     event Approval(address indexed _owner, address indexed _approved, uint256 indexed _tokenId);
     event ApprovalForAll(address indexed _owner, address indexed _operator, bool _approved);
+    event SetMarketPlace(address _from, address _marketPlace);
     //event Mint(address _from, address indexed _to, uint256 _tokenId);
     //event Burn(address indexed _from, address _to, uint256 _tokenId);
 

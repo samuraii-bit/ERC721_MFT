@@ -18,7 +18,10 @@ describe("Testing MyERC721", function() {
         const FactoryContractReceiverWrongDef = await ethers.getContractFactory("ContractReceiverWrongDef");
         const ContractReceiverWrongDef = await FactoryContractReceiverWrongDef.deploy("ContractReceiverWrongDef");
 
-        return {users, MyERC721, ContractReceiver, ContractNonReceiver, ContractReceiverWrongDef};
+        const FactoryMarketPlace = await ethers.getContractFactory("MarketPlace");
+        const MarketPlace = await FactoryMarketPlace.deploy("MarketPlace", MyERC721.target);
+
+        return {users, MyERC721, ContractReceiver, ContractNonReceiver, ContractReceiverWrongDef, MarketPlace};
     }
 
     it("Deployment test", async function(){
@@ -31,7 +34,7 @@ describe("Testing MyERC721", function() {
         const tx = await MyERC721.connect(users[0]).mint(users[1].address);
 
         await expect(tx).to.changeTokenBalance(MyERC721, users[1].address, 1);
-        await expect(tx).to.emit(MyERC721, "Mint");
+        await expect(tx).to.emit(MyERC721, "Transfer").withArgs(ethers.ZeroAddress, users[1].address, 1);
     });
 
     it("mint test: mint 1 token for users[1] from users[1]", async function(){
@@ -39,7 +42,7 @@ describe("Testing MyERC721", function() {
         const tx = await MyERC721.connect(users[1]).mint(users[1].address);
 
         await expect(tx).to.changeTokenBalance(MyERC721, users[1].address, 1);
-        await expect(tx).to.emit(MyERC721, "Mint");
+        await expect(tx).to.emit(MyERC721, "Transfer").withArgs(ethers.ZeroAddress, users[1].address, 1);
     });   
 
     it("mint test: trying to mint 1 token for users[1] from users[2]", async function(){
@@ -53,22 +56,22 @@ describe("Testing MyERC721", function() {
         const {MyERC721, users} = await loadFixture(deploy);
         const tx1 = await MyERC721.connect(users[0]).mint(users[1].address);
         await expect(tx1).to.changeTokenBalance(MyERC721, users[1].address, 1);
-        await expect(tx1).to.emit(MyERC721, "Mint");
+        await expect(tx1).to.emit(MyERC721, "Transfer").withArgs(ethers.ZeroAddress, users[1].address, 1);
 
         const tx2 = await MyERC721.connect(users[0]).burn(users[1].address, 1);
         await expect(tx2).to.changeTokenBalance(MyERC721, users[1].address, -1);
-        await expect(tx2).to.emit(MyERC721, "Burn");
+        await expect(tx2).to.emit(MyERC721, "Transfer").withArgs(users[1].address, ethers.ZeroAddress, 1);
     });
 
     it("burn test: mint 1 token for users[1] from users[1] and then burn it as users[1]", async function(){
         const {MyERC721, users} = await loadFixture(deploy);
         const tx1 = await MyERC721.connect(users[1]).mint(users[1].address);
         await expect(tx1).to.changeTokenBalance(MyERC721, users[1].address, 1);
-        await expect(tx1).to.emit(MyERC721, "Mint");
+        await expect(tx1).to.emit(MyERC721, "Transfer").withArgs(ethers.ZeroAddress, users[1].address, 1);
 
         const tx2 = await MyERC721.connect(users[1]).burn(users[1].address, 1);
         await expect(tx2).to.changeTokenBalance(MyERC721, users[1].address, -1);
-        await expect(tx2).to.emit(MyERC721, "Burn");
+        await expect(tx2).to.emit(MyERC721, "Transfer").withArgs(users[1].address, ethers.ZeroAddress, 1);
     });
 
     it("burn test: trying to burn not existing token", async function(){
@@ -82,7 +85,7 @@ describe("Testing MyERC721", function() {
         const {MyERC721, users} = await loadFixture(deploy);
         const tx1 = await MyERC721.connect(users[0]).mint(users[1].address);
         await expect(tx1).to.changeTokenBalance(MyERC721, users[1].address, 1);
-        await expect(tx1).to.emit(MyERC721, "Mint");
+        await expect(tx1).to.emit(MyERC721, "Transfer").withArgs(ethers.ZeroAddress, users[1].address, 1);
 
         const tx2 = await MyERC721.connect(users[2]);
         await expect(tx2.burn(users[1].address, 0)).to.be.revertedWith("U cant burn tokens of other users");
@@ -372,4 +375,25 @@ describe("Testing MyERC721", function() {
 
         await expect(tx["safeTransferFrom(address,address,uint256,bytes)"](users[1].address, ethers.ZeroAddress, 1, ethers.toUtf8Bytes("random"))).to.be.revertedWith("Invalid receiver address");
     });
+
+    it("safeTransferFrom{4} test: trying to transfer nft 1 from users[2] to users[3] as users[2]", async function(){
+        const {MyERC721, users} = await loadFixture(deploy);
+        await MyERC721.connect(users[1]).mint(users[1].address);
+        const tx = await MyERC721.connect(users[2]);
+
+        await expect(tx["safeTransferFrom(address,address,uint256,bytes)"](users[2].address, users[3].address, 1, ethers.toUtf8Bytes("hello"))).to.be.revertedWith("U can transfer tokens only from owner");
+    });
+
+    it("setMarketPlace test: set marketPlace as owner", async function() {
+        const {MyERC721, users, MarketPlace} = await loadFixture(deploy);
+        const tx = await MyERC721.connect(users[0]).setMarketPlace(MarketPlace.target);
+        expect(tx).to.emit(MyERC721, "SetMarketPlace").withArgs(users[0].address, MarketPlace.target);
+    });
+
+    it("setMarketPlace test: trying set marketPlace as non-owner", async function() {
+        const {MyERC721, users, MarketPlace} = await loadFixture(deploy);
+        const tx = await MyERC721.connect(users[2]);
+        await expect(tx.setMarketPlace(MarketPlace.target)).to.be.revertedWith("Only owner can set MarketPlace");
+    });
+    
 });
